@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/system/xbin/bash
 
 
 # Show CPU Path

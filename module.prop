@@ -1,0 +1,6 @@
+id=ubs-for-magisk
+name=UltimateBatterySaver
+version=1.0.0a
+versionCode=1
+author=chainsawsteel1
+description=Stupid battery saver, Forked from https://github.com/Meatwo310/ultimate-battery-saver
