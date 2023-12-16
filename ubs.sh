@@ -28,8 +28,6 @@ function showHelpMessage() {
   #echo "  - To enable or disable the CPU, you must run as root." >&2
 }
 
-showHelpMessage
-
 OPERATION=""
 ARG=""
 # Parse Arguments
@@ -39,8 +37,12 @@ function parseArgs() {
     OPERATION="info"
   elif [ $# -eq 1 ]; then
     # One Argument
-    OPERATION="enable"
-    ARG="$1"
+    if [[ "$1" =~ ^[0-9]+$ ]]; then
+      OPERATION="enable"
+      ARG="$1"
+    else
+      OPERATION="$1"
+    fi
   elif [ $# -eq 2 ]; then
     # Two Arguments
     OPERATION="$1"
@@ -53,15 +55,15 @@ function parseArgs() {
 
   case "$OPERATION" in
     "info" | "help")
-      ;;
-    "enable" | "disable")
-      if [ -z "$ARG" ]; then
-        echo "Error: Missing argument after $OPERATION" >&2
+      if [ ! -z "$ARG" ]; then
+        echo "Error: Too many arguments" >&2
         showShortHelpMessage
         exit 1
       fi
-      if ! [[ "$ARG" =~ ^[0-9]+$ ]]; then
-        echo "Error: Invalid argument $ARG after $OPERATION" >&2
+      ;;
+    "enable" | "disable")
+      if [ -z "$ARG" ]; then
+        echo "Error: Missing argument" >&2
         showShortHelpMessage
         exit 1
       fi
@@ -74,5 +76,7 @@ function parseArgs() {
   esac
 }
 
-showHelpMessage
+parseArgs "$@"
 
+echo "Operation is" "$OPERATION"
+echo "Argument is" "$ARG"
