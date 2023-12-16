@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -eu -o pipefail
+
 # Show CPU Path
 function showCpuPath() {
   echo "/sys/devices/system/cpu/cpu${*}/online"
@@ -76,6 +78,7 @@ function parseArgs() {
   esac
 
   echo "$operation" "$arg"
+  exit 0
 }
 
 result=($(parseArgs "$@"))
