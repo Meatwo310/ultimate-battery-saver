@@ -81,7 +81,7 @@ function parseArgs() {
   exit 0
 }
 
-result=($(parseArgs "$@"))
+result=($(parseArgs "$@") "")
 operation="${result[0]}"
 arg="${result[1]}"
 
