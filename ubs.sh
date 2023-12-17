@@ -15,11 +15,13 @@ set -eu -o pipefail
 #TODO: Use bash array instead of string
 #TODO: Clean up dupulicated code
 
+set +e # Ignore errors
+
 # Get online CPUs list base
 # Example: On-line CPU(s) list: 0-2,5,7 -> 0-2 5 7
 online_cpus_list_base="$(
   LANG=C lscpu |                                  # Get CPU information
-  grep -- 'On-line CPU(s) list:' || echo "" |     # Get only the line with "On-line CPU(s) list:"
+  grep -- 'On-line CPU(s) list:' |                # Get only the line with "On-line CPU(s) list:"
   sed 's/On-line CPU(s) list: *//' |              # Remove "On-line CPU(s) list: "
   tr ',' '\n'                                     # Split into lines
 )"
@@ -28,10 +30,12 @@ online_cpus_list_base="$(
 # Example: Off-line CPU(s) list: 3-4,6 -> 3-4 6
 offline_cpus_list_base="$(
   LANG=C lscpu |                                  # Get CPU information
-  grep -- 'Off-line CPU(s) list:' || echo "" |    # Get only the line with "Off-line CPU(s) list:"
+  grep -- 'Off-line CPU(s) list:' |               # Get only the line with "Off-line CPU(s) list:"
   sed 's/Off-line CPU(s) list: *//' |             # Remove "Off-line CPU(s) list: "
   tr ',' '\n'                                     # Split into lines
 )"
+
+set -e # Stop ignoring errors
 
 # Get online CPUs list
 # Example: 0-2 5 7 -> 0 1 2 5 7
@@ -115,42 +119,57 @@ all_accessable_cpus_list="$(
   done
 )"
 
+set +e # Ignore errors
+
 # Get number of CPUs
 num_of_all_cpus="$(
   echo "$all_cpus_list" |       # Get all CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"           # Count lines
 )"
+
+echo "Number of CPUs: $num_of_all_cpus"
 
 # Get number of accessable CPUs
 num_of_accessable_cpus="$(
   echo "$all_accessable_cpus_list" |    # Get accessable CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"                   # Count lines
 )"
+
+echo "Number of accessable CPUs: $num_of_accessable_cpus"
 
 # Get number of online CPUs
 num_of_online_cpus="$(
   echo "$online_cpus_list" |    # Get online CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"           # Count lines
 )"
+
+echo "Number of online CPUs: $num_of_online_cpus"
 
 # Get number of accessable online CPUs
 num_of_accessable_online_cpus="$(
   echo "$online_all_accessable_cpus_list" |    # Get accessable online CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"                          # Count lines
 )"
+
+echo "Number of accessable online CPUs: $num_of_accessable_online_cpus"
 
 # Get number of offline CPUs
 num_of_offline_cpus="$(
   echo "$offline_cpus_list" |   # Get offline CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"           # Count lines
 )"
+
+echo "Number of offline CPUs: $num_of_offline_cpus"
 
 # Get number of accessable offline CPUs
 num_of_accessable_offline_cpus="$(
   echo "$offline_all_accessable_cpus_list" |   # Get accessable offline CPUs
-  wc -l                         # Count lines
+  grep -cE "^[0-9]+$"                          # Count lines
 )"
 
+echo "Number of accessable offline CPUs: $num_of_accessable_offline_cpus"
+
+set -e # Stop ignoring errors
 
 ################################################################################
 # Functions                                                                    #
