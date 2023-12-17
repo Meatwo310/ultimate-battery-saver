@@ -5,6 +5,7 @@
 ################################################################################
 
 set -eu -o pipefail
+set -vx
 
 
 ################################################################################
@@ -17,19 +18,19 @@ set -eu -o pipefail
 # Get online CPUs list base
 # Example: On-line CPU(s) list: 0-2,5,7 -> 0-2 5 7
 online_cpus_list_base="$(
-  LANG=C lscpu |                      # Get CPU information
-  grep -- 'On-line CPU(s) list:' |    # Get only the line with "On-line CPU(s) list:"
-  sed 's/On-line CPU(s) list: *//' |  # Remove "On-line CPU(s) list: "
-  tr ',' '\n'                         # Split into lines
+  LANG=C lscpu |                                  # Get CPU information
+  grep -- 'On-line CPU(s) list:' || echo "" |     # Get only the line with "On-line CPU(s) list:"
+  sed 's/On-line CPU(s) list: *//' |              # Remove "On-line CPU(s) list: "
+  tr ',' '\n'                                     # Split into lines
 )"
 
 # Get offline CPUs list base
 # Example: Off-line CPU(s) list: 3-4,6 -> 3-4 6
 offline_cpus_list_base="$(
-  LANG=C lscpu |                      # Get CPU information
-  grep -- 'Off-line CPU(s) list:' |   # Get only the line with "Off-line CPU(s) list:"
-  sed 's/Off-line CPU(s) list: //' |  # Remove "Off-line CPU(s) list: "
-  tr ',' '\n'                         # Split into lines
+  LANG=C lscpu |                                  # Get CPU information
+  grep -- 'Off-line CPU(s) list:' || echo "" |    # Get only the line with "Off-line CPU(s) list:"
+  sed 's/Off-line CPU(s) list: *//' |             # Remove "Off-line CPU(s) list: "
+  tr ',' '\n'                                     # Split into lines
 )"
 
 # Get online CPUs list
