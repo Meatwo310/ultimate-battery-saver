@@ -12,162 +12,147 @@ set -eu -o pipefail
 # Get CPU Information                                                          #
 ################################################################################
 
-#TODO: Use bash array instead of string
 #TODO: Clean up dupulicated code
 
 set +e # Ignore errors
 
 # Get online CPUs list base
 # Example: On-line CPU(s) list: 0-2,5,7 -> 0-2 5 7
-online_cpus_list_base="$(
+online_cpus_list_base=($(
   LANG=C lscpu |                                  # Get CPU information
   grep -- 'On-line CPU(s) list:' |                # Get only the line with "On-line CPU(s) list:"
   sed 's/On-line CPU(s) list: *//' |              # Remove "On-line CPU(s) list: "
   tr ',' '\n'                                     # Split into lines
-)"
+))
 
 # Get offline CPUs list base
 # Example: Off-line CPU(s) list: 3-4,6 -> 3-4 6
-offline_cpus_list_base="$(
+offline_cpus_list_base=($(
   LANG=C lscpu |                                  # Get CPU information
   grep -- 'Off-line CPU(s) list:' |               # Get only the line with "Off-line CPU(s) list:"
   sed 's/Off-line CPU(s) list: *//' |             # Remove "Off-line CPU(s) list: "
   tr ',' '\n'                                     # Split into lines
-)"
+))
 
 set -e # Stop ignoring errors
 
 # Get online CPUs list
 # Example: 0-2 5 7 -> 0 1 2 5 7
-online_cpus_list="$(
+online_cpus_list=($(
   echo $(
     # Obtains only ranged CPU information.
-    echo "$online_cpus_list_base" |
-    tr ' ' '\n' |                         # Split into lines
-    grep -- '-' |                         # Get only lines with "-"
-    while IFS='-' read -r start end; do   # Split into start and end
-      seq $start $end;                    # Print the range
-    done;
-    # Obtains only non-ranged CPU information.
-    echo "$online_cpus_list_base" |
-    tr ' ' '\n' |                         # Split into lines
-    grep -E -- '^[0-9]+$'                 # Get only lines with numbers
+    for cpu in "${online_cpus_list_base[@]}"; do
+      if [[ $cpu == *'-'* ]]; then
+        IFS='-' read -r start end <<< "$cpu"
+        seq $start $end
+      else
+        echo "$cpu"
+      fi
+    done
   ) |
   tr ' ' '\n' |   # Split into lines
   sort -n         # Sort numerically
-)"
+))
 
 # Get online accessable CPUs
 # Example: 0 1 2 5 7 -> 1 2 5 7
-online_all_accessable_cpus_list="$(
-  echo "$online_cpus_list" |
-  while read -r cpu; do
-    if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-      echo "$cpu"
-    fi
-  done
-)"
+online_all_accessable_cpus_list=()
+for cpu in "${online_cpus_list[@]}"; do
+  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
+    online_all_accessable_cpus_list+=("$cpu")
+  fi
+done
 
 # Get offline CPUs
 # Example: 3-4 6 -> 3 4 6
-offline_cpus_list="$(
+offline_cpus_list=($(
   echo $(
     # Obtains only ranged CPU information.
-    echo "$offline_cpus_list_base" |
-    tr ' ' '\n' |                         # Split into lines
-    grep -- '-' |                         # Get only lines with "-"
-    while IFS='-' read -r start end; do   # Split into start and end
-      seq $start $end;                    # Print the range
-    done;
-    # Obtains only non-ranged CPU information.
-    echo "$offline_cpus_list_base" |
-    tr ' ' '\n' |                         # Split into lines
-    grep -E -- '^[0-9]+$'                 # Get only lines with numbers
+    for cpu in "${offline_cpus_list_base[@]}"; do
+      if [[ $cpu == *'-'* ]]; then
+        IFS='-' read -r start end <<< "$cpu"
+        seq $start $end
+      else
+        echo "$cpu"
+      fi
+    done
   ) |
   tr ' ' '\n' |   # Split into lines
   sort -n         # Sort numerically
-)"
+))
 
 # Get offline accessable CPUs
 # Example: 3 4 6 -> 3 4 6
-offline_all_accessable_cpus_list="$(
-  echo "$offline_cpus_list" |
-  while read -r cpu; do
-    if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-      echo "$cpu"
-    fi
-  done
-)"
+offline_all_accessable_cpus_list=()
+for cpu in "${offline_cpus_list[@]}"; do
+  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
+    offline_all_accessable_cpus_list+=("$cpu")
+  fi
+done
 
 # Get all CPUs list
 # Example: 0 1 2 3 4 5 6 7
-all_cpus_list="$(
-  echo "$online_cpus_list" "$offline_cpus_list" |
+all_cpus_list=($(
+  echo "${online_cpus_list[@]}" "${offline_cpus_list[@]}" |
   tr ' ' '\n' |  # Split into lines
   sort -n |      # Sort numerically in reverse order
   uniq           # Remove duplicates
-)"
+))
 
 # Get all accessable CPUs list
 # Example: 1 2 3 4 5 6 7
-all_accessable_cpus_list="$(
-  echo "$all_cpus_list" |
-  while read -r cpu; do
-    if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-      echo "$cpu"
-    fi
-  done
-)"
+all_accessable_cpus_list=()
+for cpu in "${all_cpus_list[@]}"; do
+  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
+    all_accessable_cpus_list+=("$cpu")
+  fi
+done
+
+# Get all CPUs status
+# Example: 1 0 1 1 0 1 0 1
+all_cpus_status_list=()
+for cpu in "${all_cpus_list[@]}"; do
+  printf '%s\0' "${online_cpus_list[@]}" | grep -qx "$cpu" && all_cpus_status_list+=("1") || all_cpus_status_list+=("0")
+done
+
+# Get all CPUs accessability
+# Example: 0 1 1 1 1 1 1 1
+all_cpus_accessability_list=()
+for cpu in "${all_cpus_list[@]}"; do
+  printf '%s\0' "${all_accessable_cpus_list[@]}" | grep -qx "$cpu" && all_cpus_accessability_list+=("1") || all_cpus_accessability_list+=("0")
+done
 
 set +e # Ignore errors
 
 # Get number of CPUs
-num_of_all_cpus="$(
-  echo "$all_cpus_list" |       # Get all CPUs
-  grep -cE "^[0-9]+$"           # Count lines
-)"
+num_of_all_cpus=${#all_cpus_list[@]}
 
-echo "Number of CPUs: $num_of_all_cpus"
+#echo "Number of CPUs: $num_of_all_cpus"
 
 # Get number of accessable CPUs
-num_of_accessable_cpus="$(
-  echo "$all_accessable_cpus_list" |    # Get accessable CPUs
-  grep -cE "^[0-9]+$"                   # Count lines
-)"
+num_of_accessable_cpus=${#all_accessable_cpus_list[@]}
 
-echo "Number of accessable CPUs: $num_of_accessable_cpus"
+#echo "Number of accessable CPUs: $num_of_accessable_cpus"
 
 # Get number of online CPUs
-num_of_online_cpus="$(
-  echo "$online_cpus_list" |    # Get online CPUs
-  grep -cE "^[0-9]+$"           # Count lines
-)"
+num_of_online_cpus=${#online_cpus_list[@]}
 
-echo "Number of online CPUs: $num_of_online_cpus"
+#echo "Number of online CPUs: $num_of_online_cpus"
 
 # Get number of accessable online CPUs
-num_of_accessable_online_cpus="$(
-  echo "$online_all_accessable_cpus_list" |    # Get accessable online CPUs
-  grep -cE "^[0-9]+$"                          # Count lines
-)"
+num_of_accessable_online_cpus=${#online_all_accessable_cpus_list[@]}
 
-echo "Number of accessable online CPUs: $num_of_accessable_online_cpus"
+#echo "Number of accessable online CPUs: $num_of_accessable_online_cpus"
 
 # Get number of offline CPUs
-num_of_offline_cpus="$(
-  echo "$offline_cpus_list" |   # Get offline CPUs
-  grep -cE "^[0-9]+$"           # Count lines
-)"
+num_of_offline_cpus=${#offline_cpus_list[@]}
 
-echo "Number of offline CPUs: $num_of_offline_cpus"
+#echo "Number of offline CPUs: $num_of_offline_cpus"
 
 # Get number of accessable offline CPUs
-num_of_accessable_offline_cpus="$(
-  echo "$offline_all_accessable_cpus_list" |   # Get accessable offline CPUs
-  grep -cE "^[0-9]+$"                          # Count lines
-)"
+num_of_accessable_offline_cpus=${#offline_all_accessable_cpus_list[@]}
 
-echo "Number of accessable offline CPUs: $num_of_accessable_offline_cpus"
+#echo "Number of accessable offline CPUs: $num_of_accessable_offline_cpus"
 
 set -e # Stop ignoring errors
 
@@ -180,7 +165,7 @@ function checkRoot() {
   if [ $(whoami) != "root" ]; then
     echo "This command requires ROOT to run" >&2
     echo "Example: sudo $(basename $0)" >&2
-    # exit 1
+    exit 1
   fi
 }
 
@@ -197,9 +182,9 @@ Usage: $(basename $0) [OPERATION] [ARG]
 Controls the number of CPUs enabled/disabled or displays that information.
 
 Specific Usage:
-  $(basename $0) [info]             Show the current CPU online status. Shown as "#"(Online) or "-"(Offline) for each CPU.
-  $(basename $0) [enable] NUMBER    Enables the specified number of CPUs, starting from CPU0, and disables the rest. Root required. 
-  $(basename $0) disable NUMBER     Disables the specified number of CPUs, starting from CPU1, and enables the rest. Root required.
+  $(basename $0) [info]             Show the current CPU status. Shown as "#"(Online) or "-"(Offline) for each CPU.
+  $(basename $0) [enable] NUMBER    Enables the specified number of CPUs. Root required. 
+  $(basename $0) disable NUMBER     Disables the specified number of CPUs. Root required.
   $(basename $0) help               Show this help message.
 
 Notes:
@@ -250,11 +235,22 @@ function parseArgs() {
         echo "Error: Invalid argument: $arg" >&2
         showShortHelpMessage
         exit 1
-      elif [ ! "$arg" -le "$num_of_accessable_cpus" ]; then
-        echo "Error: Argument is too large: $arg" >&2
-        echo "CPUs which can be accessed: $num_of_accessable_cpus" >&2
-        exit 1
       fi
+
+      if [ "$operation" == "enable" ]; then
+        if [ "$arg" -lt "$(($num_of_all_cpus-$num_of_accessable_cpus))" ]; then
+          echo "Error: Argument is too small: $arg" >&2
+          echo "Unaccessable CPUs: $(($num_of_all_cpus-$num_of_accessable_cpus))" >&2
+          exit 1
+        fi
+      elif [ "$operation" == "disable" ]; then
+        if [ "$arg" -gt "$num_of_accessable_cpus" ]; then
+          echo "Error: Argument is too large: $arg" >&2
+          echo "Accessable CPUs: $num_of_accessable_cpus" >&2
+          exit 1
+        fi
+      fi
+
       ;;
     *)
       echo "Error: Invalid operation: $operation" >&2
@@ -278,18 +274,20 @@ function showInfo() {
   echo -n "${num_of_online_cpus}/${num_of_all_cpus} CPU(s) = ${percentage}% POWER "
 
   echo -n "["
-  for i in $all_cpus_list; do
-    #TODO: Clean up dupulicated code -- use XX_cpus_XX variable
-    local result
-    result="$(cat $(showCpuPath $i) 2>/dev/null)" || result="?"
-    if [ "$result" = "1" ]; then
-      echo -en "\e[32m#"
-    elif [ "$result" = "0" ]; then
-      echo -en "\e[31m-"
-    elif [ -d "$(dirname showCpuPath)" ]; then
-      echo -en "\e[33m#"
+
+  for i in "${all_cpus_list[@]}"; do
+    if [ "${all_cpus_status_list[$i]}" -eq 1 ]; then
+      if [ "${all_cpus_accessability_list[$i]}" -eq 1 ]; then
+        echo -en "\e[32m#"
+      else
+        echo -en "\e[33m#"
+      fi
     else
-      echo -en "\e[33m_"
+      if [ "${all_cpus_accessability_list[$i]}" -eq 1 ]; then
+        echo -en "\e[31m-"
+      else
+        echo -en "\e[33m_"
+      fi
     fi
   done
   echo -en "\e[m] "
@@ -336,31 +334,31 @@ case "$operation" in
   "enable")
     checkRoot
 
-    i=0
-
-    for i in $(seq 1 $(($arg - 1))); do
-      echo 1  $(showCpuPath $i)
+    enable=(${all_accessable_cpus_list[@]:0:$(($arg-($num_of_all_cpus-$num_of_accessable_cpus)))})
+    disable=(${all_accessable_cpus_list[@]:$(($arg-($num_of_all_cpus-$num_of_accessable_cpus)))})
+    for cpu in "${enable[@]}"; do
+      echo 1 > $(showCpuPath $cpu)
+    done
+    for cpu in "${disable[@]}"; do
+      echo 0 > $(showCpuPath $cpu)
     done
 
-    for i in $(seq $((i + 1)) $(($num_of_accessable_cpus - 1))); do
-      echo 0  $(showCpuPath $i)
-    done
-
-    showInfo
+    $0 info
 
     ;;
   "disable")
     checkRoot
 
-    i=0
-
-    for i in $(seq 1 $(($arg - 1))); do
-      echo 0  $(showCpuPath $i)
+    disable=(${all_accessable_cpus_list[@]:0:$(($arg))})
+    enable=(${all_accessable_cpus_list[@]:$(($arg))})
+    for cpu in "${enable[@]}"; do
+      echo 1 > $(showCpuPath $cpu)
+    done
+    for cpu in "${disable[@]}"; do
+      echo 0 > $(showCpuPath $cpu)
     done
 
-    for i in $(seq $((i + 1)) $(($num_of_accessable_cpus - 1))); do
-      echo 1  $(showCpuPath $i)
-    done
+    $0 info
 
     ;;
   "info")
