@@ -12,86 +12,43 @@ set -eu -o pipefail
 # Get CPU Information                                                          #
 ################################################################################
 
-#TODO: Clean up dupulicated code
-
-set +e # Ignore errors
-
-# Get online CPUs list base
-# Example: On-line CPU(s) list: 0-2,5,7 -> 0-2 5 7
-online_cpus_list_base=($(
-  LANG=C lscpu |                                  # Get CPU information
-  grep -- 'On-line CPU(s) list:' |                # Get only the line with "On-line CPU(s) list:"
-  sed 's/On-line CPU(s) list: *//' |              # Remove "On-line CPU(s) list: "
+# Get online or offline CPUs range list
+function getCpusRangeList() {
+  set +e # Ignore errors
+  LANG=C lscpu |                                # Get CPU information
+  grep -E -- "$* CPU\(s\) list:" |                     # Get only the line with "On-line CPU(s) list:"
+  sed "s/$* CPU(s) list: *//" |                   # Remove "On-line CPU(s) list: "
   tr ',' '\n'                                     # Split into lines
-))
+  set -e # Stop ignoring errors
+}
 
-# Get offline CPUs list base
-# Example: Off-line CPU(s) list: 3-4,6 -> 3-4 6
-offline_cpus_list_base=($(
-  LANG=C lscpu |                                  # Get CPU information
-  grep -- 'Off-line CPU(s) list:' |               # Get only the line with "Off-line CPU(s) list:"
-  sed 's/Off-line CPU(s) list: *//' |             # Remove "Off-line CPU(s) list: "
-  tr ',' '\n'                                     # Split into lines
-))
+# Get CPUs range list
+# Example: `On-line CPU(s) list: 0-2,5,7` -> 0-2 5 7
+online_cpus_list_base=($(getCpusRangeList 'On-line'))
+offline_cpus_list_base=($(getCpusRangeList 'Off-line'))
 
-set -e # Stop ignoring errors
+# Get CPUs list from range list
+function getCpusList() {
+  echo $(
+    # Obtains only ranged CPU information.
+    local list=("$@")
+    for cpu in "${list[@]}"; do
+      if [[ $cpu == *'-'* ]]; then
+        IFS='-' read -r start end <<< "$cpu"
+        seq $start $end
+      else
+        echo "$cpu"
+      fi
+    done
+  ) |
+  tr ' ' '\n' |   # Split into lines
+  sort -n         # Sort numerically
+}
 
-# Get online CPUs list
+# Get CPUs list
 # Example: 0-2 5 7 -> 0 1 2 5 7
-online_cpus_list=($(
-  echo $(
-    # Obtains only ranged CPU information.
-    for cpu in "${online_cpus_list_base[@]}"; do
-      if [[ $cpu == *'-'* ]]; then
-        IFS='-' read -r start end <<< "$cpu"
-        seq $start $end
-      else
-        echo "$cpu"
-      fi
-    done
-  ) |
-  tr ' ' '\n' |   # Split into lines
-  sort -n         # Sort numerically
-))
-
-# Get online accessable CPUs
-# Example: 0 1 2 5 7 -> 1 2 5 7
-online_all_accessable_cpus_list=()
-for cpu in "${online_cpus_list[@]}"; do
-  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-    online_all_accessable_cpus_list+=("$cpu")
-  fi
-done
-
-# Get offline CPUs
-# Example: 3-4 6 -> 3 4 6
-offline_cpus_list=($(
-  echo $(
-    # Obtains only ranged CPU information.
-    for cpu in "${offline_cpus_list_base[@]}"; do
-      if [[ $cpu == *'-'* ]]; then
-        IFS='-' read -r start end <<< "$cpu"
-        seq $start $end
-      else
-        echo "$cpu"
-      fi
-    done
-  ) |
-  tr ' ' '\n' |   # Split into lines
-  sort -n         # Sort numerically
-))
-
-# Get offline accessable CPUs
-# Example: 3 4 6 -> 3 4 6
-offline_all_accessable_cpus_list=()
-for cpu in "${offline_cpus_list[@]}"; do
-  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-    offline_all_accessable_cpus_list+=("$cpu")
-  fi
-done
-
-# Get all CPUs list
-# Example: 0 1 2 3 4 5 6 7
+online_cpus_list=($(getCpusList "${online_cpus_list_base[@]}"))
+offline_cpus_list=($(getCpusList "${offline_cpus_list_base[@]}"))
 all_cpus_list=($(
   echo "${online_cpus_list[@]}" "${offline_cpus_list[@]}" |
   tr ' ' '\n' |  # Split into lines
@@ -99,60 +56,48 @@ all_cpus_list=($(
   uniq           # Remove duplicates
 ))
 
-# Get all accessable CPUs list
-# Example: 1 2 3 4 5 6 7
-all_accessable_cpus_list=()
-for cpu in "${all_cpus_list[@]}"; do
-  if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
-    all_accessable_cpus_list+=("$cpu")
-  fi
-done
+# Get accessable CPUs list from range list
+function getAccessableCpusList() {
+  local list=("$@")
+  local result=()
+  for cpu in "${list[@]}"; do
+    if [ -e "/sys/devices/system/cpu/cpu${cpu}/online" ]; then
+      result+=("$cpu")
+    fi
+  done
+  echo "${result[@]}"
+}
 
-# Get all CPUs status
+# Get accessable CPUs list
+# Example: 0 1 2 5 7 -> 1 2 5 7
+online_all_accessable_cpus_list=($(getAccessableCpusList "${online_cpus_list[@]}"))
+offline_all_accessable_cpus_list=($(getAccessableCpusList "${offline_cpus_list[@]}"))
+all_accessable_cpus_list=($(getAccessableCpusList "${all_cpus_list[@]}"))
+
+# Get CPUs status bit list from any CPUs list
+function getCpusStatusBitList() {
+  local list=("$@")
+  local result=()
+  for cpu in "${all_cpus_list[@]}"; do
+    printf '%s\0' "${list[@]}" | grep -qx "$cpu" && result+=("1") || result+=("0")
+  done
+  echo "${result[@]}"
+}
+
+# Get all CPUs status bit list
 # Example: 1 0 1 1 0 1 0 1
-all_cpus_status_list=()
-for cpu in "${all_cpus_list[@]}"; do
-  printf '%s\0' "${online_cpus_list[@]}" | grep -qx "$cpu" && all_cpus_status_list+=("1") || all_cpus_status_list+=("0")
-done
-
-# Get all CPUs accessability
-# Example: 0 1 1 1 1 1 1 1
-all_cpus_accessability_list=()
-for cpu in "${all_cpus_list[@]}"; do
-  printf '%s\0' "${all_accessable_cpus_list[@]}" | grep -qx "$cpu" && all_cpus_accessability_list+=("1") || all_cpus_accessability_list+=("0")
-done
+all_cpus_status_list=($(getCpusStatusBitList "${online_cpus_list[@]}"))
+all_cpus_accessability_list=($(getCpusStatusBitList "${all_accessable_cpus_list[@]}"))
 
 set +e # Ignore errors
 
-# Get number of CPUs
+# Get size of list
 num_of_all_cpus=${#all_cpus_list[@]}
-
-#echo "Number of CPUs: $num_of_all_cpus"
-
-# Get number of accessable CPUs
 num_of_accessable_cpus=${#all_accessable_cpus_list[@]}
-
-#echo "Number of accessable CPUs: $num_of_accessable_cpus"
-
-# Get number of online CPUs
 num_of_online_cpus=${#online_cpus_list[@]}
-
-#echo "Number of online CPUs: $num_of_online_cpus"
-
-# Get number of accessable online CPUs
 num_of_accessable_online_cpus=${#online_all_accessable_cpus_list[@]}
-
-#echo "Number of accessable online CPUs: $num_of_accessable_online_cpus"
-
-# Get number of offline CPUs
 num_of_offline_cpus=${#offline_cpus_list[@]}
-
-#echo "Number of offline CPUs: $num_of_offline_cpus"
-
-# Get number of accessable offline CPUs
 num_of_accessable_offline_cpus=${#offline_all_accessable_cpus_list[@]}
-
-#echo "Number of accessable offline CPUs: $num_of_accessable_offline_cpus"
 
 set -e # Stop ignoring errors
 
@@ -310,10 +255,10 @@ function showInfo() {
     echo -n "High Power!"
   elif [ $percentage -le 99 ]; then
     echo -en "\e[1m\e[41m"
-    echo -n "SUPER POWER!!!"
+    echo -n "HUGE POWER!!!"
   else
     echo -en "\e[1m\e[3m\e[4m\e[5m\e[37m\e[41m"
-    echo -n "ULTIMATE POWER!!!!!!!!"
+    echo -n "OVER POWER!!!!!!!!"
   fi
   echo -e "\e[0m"
 }
